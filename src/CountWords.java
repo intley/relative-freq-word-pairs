@@ -5,6 +5,7 @@
  */
 
 // Java libraries
+import java.io.IOException;
 
 // Configuration libraries required for Hadoop & MapReduce
 import org.apache.hadoop.conf.Configured;
@@ -54,6 +55,12 @@ public class CountWords extends Configured implements Tool {
 
 
 class WordMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
+	@Override
+	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+		String[] line = value.toString().split("\s+");
+		
+	}
+	
 	
 }
 
