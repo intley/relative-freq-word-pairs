@@ -24,6 +24,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.Reducer.Context;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
@@ -41,8 +42,8 @@ public class CountWords extends Configured implements Tool {
 		FileInputFormat.setInputPaths(conf, new Path(args[0]));
 		conf.setInputFormatClass(TextInputFormat.class);
 			
-		conf.setMapperClass(WordMapper.class);
-		conf.setReducerClass(WordReducer.class);
+		conf.setMapperClass(myMapper.class);
+		conf.setReducerClass(myReducer.class);
 			
 		FileOutputFormat.setOutputPath(conf, new Path(args[1]));
 		conf.setMapOutputKeyClass(Text.class);
@@ -65,29 +66,46 @@ public class CountWords extends Configured implements Tool {
 			int status = ToolRunner.run(new CountWords(), args);
 			System.exit(status);
 		}
-
-
-}
-
-
-class WordMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
-	@Override
-	public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-		String[] line = value.toString().trim().split("\\s+");
-		for(int i=0; i < line.length; i++) {
-			if(line[i].matches("^\\w+$")) {
-				context.write(new Text(line[i]), new LongWritable(1));
+		
+		public static class myMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
+			@Override
+			public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+				String[] line = value.toString().trim().split("\\s+");
+				for(int i=0; i < line.length; i++) {
+					if(line[i].matches("^\\w+$")) {
+						context.write(new Text(line[i]), new LongWritable(1));
+					}
+				}
+				
+				for(int i=0; i < line.length - 1; i++) {
+					if(line[i].matches("^\\w+$") && line[i+1].matches("^\\w+$")){ 
+						context.write(new Text(line[i] + " " + line[i+1]), new LongWritable(1));
+					}
+				}
+				
 			}
+			
 		}
 		
-		for(int i=0; i < line.length - 1; i++) {
-			if(line[i].matches("^\\w+$") && line[i+1].matches("^\\w+$")){ 
-				context.write(new Text(line[i] + " " + line[i+1]), new LongWritable(1));
+		// Combiner gets the count of the word pairs
+		public static class Combiner extends Reducer<Text, LongWritable, Text, LongWritable> {
+
+			public void reduce(Text key, Iterable<LongWritable> values, Context context)
+					throws IOException, InterruptedException {
+
+				long count = 0;
+				for (LongWritable val : values) {
+					count += val.get();
+				}
+				context.write(key, new LongWritable(count));
 			}
+
 		}
+		//
 		
-	}
-	
+		
+
+
 }
 
 //
@@ -115,7 +133,7 @@ class ResultPair implements Comparable<ResultPair>  {
 }
 //
 
-class WordReducer extends Reducer <Text, LongWritable,Text, Text> {
+class myReducer extends Reducer <Text, LongWritable,Text, Text> {
 	
 	DoubleWritable freq = new DoubleWritable();
 	DoubleWritable relFreq = new DoubleWritable();
