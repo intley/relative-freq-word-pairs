@@ -33,6 +33,9 @@ import org.apache.hadoop.util.Tool;
 import org.apache.hadoop.util.ToolRunner;
 
 public class CountWords extends Configured implements Tool {
+	
+	// Used for storing and sorting the word pairs 
+	public static TreeSet<ResultPair> sortedTreePair = new TreeSet<>();
 
 	// Configuration required to run Mapreduce programs
 	public int run(String[] args) throws Exception { 
@@ -62,129 +65,129 @@ public class CountWords extends Configured implements Tool {
 
 		}
 	
-		public static void main(String[] args) throws Exception {
-			int status = ToolRunner.run(new CountWords(), args);
-			System.exit(status);
-		}
+	public static void main(String[] args) throws Exception {
+		int status = ToolRunner.run(new CountWords(), args);
+		System.exit(status);
+	}
 		
-		public static class myMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
-			@Override
-			public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-				String[] line = value.toString().trim().split("\\s+");
-				for(int i=0; i < line.length; i++) {
-					if(line[i].matches("^\\w+$")) {
-						context.write(new Text(line[i]), new LongWritable(1));
-					}
+	public static class myMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
+		@Override
+		public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+			String[] line = value.toString().trim().split("\\s+");
+			for(int i=0; i < line.length; i++) {
+				if(line[i].matches("^\\w+$")) {
+					context.write(new Text(line[i]), new LongWritable(1));
 				}
+			}
 				
-				for(int i=0; i < line.length - 1; i++) {
-					if(line[i].matches("^\\w+$") && line[i+1].matches("^\\w+$")){ 
-						context.write(new Text(line[i] + " " + line[i+1]), new LongWritable(1));
-					}
+			for(int i=0; i < line.length - 1; i++) {
+				if(line[i].matches("^\\w+$") && line[i+1].matches("^\\w+$")){ 
+					context.write(new Text(line[i] + " " + line[i+1]), new LongWritable(1));
 				}
+			}
 				
+		}
+			
+	}
+		
+	// Combiner gets the count of the word pairs
+	public static class Combiner extends Reducer<Text, LongWritable, Text, LongWritable> {
+
+		public void reduce(Text key, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
+
+			long count = 0;
+			for (LongWritable val : values) {
+				count += val.get();
+			}
+				context.write(key, new LongWritable(count));
+		}
+
+	}
+	//
+	
+	class myReducer extends Reducer <Text, LongWritable,Text, Text> {
+		
+		DoubleWritable freq = new DoubleWritable();
+		DoubleWritable relFreq = new DoubleWritable();
+		Text word = new Text("");
+		TreeSet<ResultPair> sortedOutput_temp = new TreeSet<>();
+		TreeSet<ResultPair> sortedOutput = new TreeSet<>();
+		
+		@Override
+		public void reduce(Text key, Iterable<LongWritable> value, Context con) throws IOException, InterruptedException {
+			
+			String[] pair = key.toString().split("\\s");
+			if(pair.length == 1) {
+				if(pair[0].equals(word.toString())) {
+					freq.set(freq.get() + compFreq(value));
+				}
+				else { 
+					word.set(pair[0]);
+					freq.set(0);
+					freq.set(compFreq(value));
+				}
+			}
+			else {
+				double freq = compFreq(value);
+				relFreq.set((double)freq / this.freq.get());
+				double rel = relFreq.get();
+				//
+				sortedOutput_temp.add(new ResultPair(rel, key.toString(), word.toString()));
+				if (sortedOutput_temp.size() > 100000) {
+					sortedOutput_temp.pollLast();
+				}
+				//
 			}
 			
 		}
 		
-		// Combiner gets the count of the word pairs
-		public static class Combiner extends Reducer<Text, LongWritable, Text, LongWritable> {
-
-			public void reduce(Text key, Iterable<LongWritable> values, Context context)
-					throws IOException, InterruptedException {
-
-				long count = 0;
-				for (LongWritable val : values) {
-					count += val.get();
-				}
-				context.write(key, new LongWritable(count));
+		public double compFreq(Iterable<LongWritable> value) {
+			double freq = 0;
+			
+			for (LongWritable val : value) {
+				freq+= val.get();
 			}
-
+			return freq;
 		}
-		//
+
+	//
+		public void cleanup(Context context) throws IOException, InterruptedException {
+			while(!sortedOutput_temp.isEmpty()){
+				ResultPair p1= sortedOutput_temp.pollFirst();
+				context.write(new Text(p1.key+" / "+p1.key.split(" ")[0] + " ="), new Text(Double.toString(p1.relFreq)));
+			}
+		}
+	//
 		
+	}
+	
+	//
+	class ResultPair implements Comparable<ResultPair>  {
 		
+		double relFreq;
+		double count;
+		String key;
+		String value;
+
+		ResultPair(double relFreq, double count, String key, String value) {
+			this.relFreq = relFreq;
+			this.count = count;
+			this.key = key;
+			this.value = value;
+		}
+
+		@Override
+		public int compareTo(ResultPair resultPair) {
+			if (this.count <= resultPair.count) {
+				return 1;
+			} else {
+				return -1;
+			}
+		}
+	}
+	//
 
 
 }
 
-//
-class ResultPair implements Comparable<ResultPair>  {
-	
 
-	double relFreq;
-	String key;
-	String value;
-
-	ResultPair(double relFreq, String key, String value) {
-		this.relFreq = relFreq;
-		this.key = key;
-		this.value = value;
-	}
-
-	@Override
-	public int compareTo(ResultPair resultPair) {
-		if (this.relFreq <= resultPair.relFreq) {
-			return 1;
-		} else {
-			return -1;
-		}
-	}
-}
-//
-
-class myReducer extends Reducer <Text, LongWritable,Text, Text> {
-	
-	DoubleWritable freq = new DoubleWritable();
-	DoubleWritable relFreq = new DoubleWritable();
-	Text word = new Text("");
-	TreeSet<ResultPair> sortedOutput_temp = new TreeSet<>();
-	TreeSet<ResultPair> sortedOutput = new TreeSet<>();
-	
-	@Override
-	public void reduce(Text key, Iterable<LongWritable> value, Context con) throws IOException, InterruptedException {
-		
-		String[] pair = key.toString().split("\\s");
-		if(pair.length == 1) {
-			if(pair[0].equals(word.toString())) {
-				freq.set(freq.get() + compFreq(value));
-			}
-			else { 
-				word.set(pair[0]);
-				freq.set(0);
-				freq.set(compFreq(value));
-			}
-		}
-		else {
-			double freq = compFreq(value);
-			relFreq.set((double)freq / this.freq.get());
-			double rel = relFreq.get();
-			//
-			sortedOutput_temp.add(new ResultPair(rel, key.toString(), word.toString()));
-			if (sortedOutput_temp.size() > 100000) {
-				sortedOutput_temp.pollLast();
-			}
-			//
-		}
-		
-	}
-	
-	public double compFreq(Iterable<LongWritable> value) {
-		double freq = 0;
-		
-		for (LongWritable val : value) {
-			freq+= val.get();
-		}
-		return freq;
-	}
-
-//
-	public void cleanup(Context context) throws IOException, InterruptedException {
-		while(!sortedOutput_temp.isEmpty()){
-			ResultPair p1= sortedOutput_temp.pollFirst();
-			context.write(new Text(p1.key+" / "+p1.key.split(" ")[0] + " ="), new Text(Double.toString(p1.relFreq)));
-		}
-	}
-//
-	
-}
