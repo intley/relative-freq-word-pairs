@@ -49,15 +49,13 @@ public class CountWords {
 				}
 			}
 
-			StringBuilder sb = new StringBuilder();
 			for (int index = 0; index < line.length; index++) {
 				if (index == line.length - 1) {
 					break;
 				} else {
 					if (line[index].matches("^\\w+$") && line[index + 1].matches("^\\w+$")) {
-						sb.append(line[index]).append(" ").append(line[index + 1]);
-						context.write(new Text(sb.toString()), new LongWritable(1));
-						sb.delete(0, sb.length());
+						String word = line[index] + " " + line[index + 1];
+						context.write(new Text(word), new LongWritable(1));
 					}
 				}
 			}
@@ -78,8 +76,6 @@ public class CountWords {
 		}
 
 	}
-
-
 
 	public static void main(String[] args) throws Exception {
 
