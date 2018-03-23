@@ -34,7 +34,6 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
 public class CountWords {
 
-
 	// Used for storing and sorting the word pairs 
 	public static TreeSet<ResultPair> sortedOutput = new TreeSet<>();
 
@@ -108,12 +107,37 @@ public class CountWords {
 		Filewrite.close();
 
 	}
+	
+	public static class ResultPair implements Comparable<ResultPair>  {
+
+		double relFreq;
+		double count;
+		String key;
+		String value;
+
+		ResultPair(double relFreq, double count, String key, String value) {
+			this.relFreq = relFreq;
+			this.count = count;
+			this.key = key;
+			this.value = value;
+		}
+
+		@Override
+		public int compareTo(ResultPair resultPair) {
+			if (this.count <= resultPair.count) {
+				return 1;
+			} 
+			else {
+				return -1;
+			}
+		}
+	}
 
 	public static class myReducer extends Reducer <Text, LongWritable,Text, Text> {
 
 		DoubleWritable freq = new DoubleWritable();
 		DoubleWritable relFreq = new DoubleWritable();
-		Text word = new Text("EMPTY");
+		Text word = new Text("");
 
 		@Override
 		public void reduce(Text key, Iterable<LongWritable> value, Context con) throws IOException, InterruptedException {
@@ -158,31 +182,6 @@ public class CountWords {
 			return freq;
 		}
 
-	}
-
-	public static class ResultPair implements Comparable<ResultPair>  {
-
-		double relFreq;
-		double count;
-		String key;
-		String value;
-
-		ResultPair(double relFreq, double count, String key, String value) {
-			this.relFreq = relFreq;
-			this.count = count;
-			this.key = key;
-			this.value = value;
-		}
-
-		@Override
-		public int compareTo(ResultPair resultPair) {
-			if (this.count <= resultPair.count) {
-				return 1;
-			} 
-			else {
-				return -1;
-			}
-		}
 	}
 
 }
