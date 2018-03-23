@@ -3,20 +3,23 @@
  * @course: CS 644 Introduction to Big Data
  * @description: Relative Frequencies of word pairs from 100,000 Wikipedia documents
  * 
- * References: (Used for only understanding logic of programming)
+ * References: 
  * https://hadoop.apache.org/docs/r2.7.4/api/org/apache/hadoop/mapreduce/Mapper.html
  * https://hadoop.apache.org/docs/r2.7.0/api/org/apache/hadoop/mapreduce/Reducer.html
  * https://hadoop.apache.org/docs/stable/api/org/apache/hadoop/io/LongWritable.html
  * https://github.com/chaitanya552/big-data/blob/master/Relative-Word-Frequency/
+ * https://github.com/sahild22/Relative-Frequency
  * 
  */
 
 // Java libraries
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.TreeSet;
 
 // Configuration libraries required for Hadoop & MapReduce
-import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.DoubleWritable;
 import org.apache.hadoop.io.LongWritable;
@@ -24,100 +27,103 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.Reducer.Context;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
-import org.apache.hadoop.util.Tool;
-import org.apache.hadoop.util.ToolRunner;
 
-public class CountWords extends Configured implements Tool {
-	
+public class CountWords {
+
+
 	// Used for storing and sorting the word pairs 
-	public static TreeSet<ResultPair> sortedTreePair = new TreeSet<>();
+	public static TreeSet<ResultPair> sortedOutput = new TreeSet<>();
 
-	// Configuration required to run Mapreduce programs
-	public int run(String[] args) throws Exception { 
-		Job conf = Job.getInstance(getConf(), "Finding Relative Frequency of Word Pairs");
+	public static class myMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
+
+		public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+
+			String[] line = value.toString().trim().split("\\s+");
+			for(String word: line) {
+				if(word.matches("^\\w+$")) {
+					context.write(new Text(word.trim() + " " + "&"), new LongWritable(1));
+				}
+			}
+
+			StringBuilder sb = new StringBuilder();
+			for (int index = 0; index < line.length; index++) {
+				if (index == line.length - 1) {
+					break;
+				} else {
+					if (line[index].matches("^\\w+$") && line[index + 1].matches("^\\w+$")) {
+						sb.append(line[index]).append(" ").append(line[index + 1]);
+						context.write(new Text(sb.toString()), new LongWritable(1));
+						sb.delete(0, sb.length());
+					}
+				}
+			}
+
+		}
+
+	}
+
+	public static class Combiner extends Reducer<Text, LongWritable, Text, LongWritable> {
+
+		public void reduce(Text key, Iterable<LongWritable> values, Context con) throws IOException, InterruptedException {
+
+			long freq = 0;
+			for (LongWritable val : values) {
+				freq += val.get();
+			}
+			con.write(key, new LongWritable(freq));
+		}
+
+	}
+
+
+
+	public static void main(String[] args) throws Exception {
+
+		Job conf = Job.getInstance(new Configuration());
 		conf.setJarByClass(CountWords.class);
-			
+
 		FileInputFormat.setInputPaths(conf, new Path(args[0]));
 		conf.setInputFormatClass(TextInputFormat.class);
-			
+
 		conf.setMapperClass(myMapper.class);
+		conf.setCombinerClass(Combiner.class);
 		conf.setReducerClass(myReducer.class);
-			
+
 		FileOutputFormat.setOutputPath(conf, new Path(args[1]));
 		conf.setMapOutputKeyClass(Text.class);
 		conf.setMapOutputValueClass(LongWritable.class);
-			
+
 		conf.setOutputFormatClass(TextOutputFormat.class);
 		conf.setOutputKeyClass(Text.class);
 		conf.setOutputValueClass(Text.class);
-			
-		if (conf.waitForCompletion(true)) {
-			return 0;
-		}
-		else {
-			return 1;
-		}
 
-		}
-	
-	public static void main(String[] args) throws Exception {
-		int status = ToolRunner.run(new CountWords(), args);
-		System.exit(status);
-	}
-		
-	public static class myMapper extends Mapper <LongWritable, Text, Text, LongWritable> {
-		@Override
-		public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-			String[] line = value.toString().trim().split("\\s+");
-			for(int i=0; i < line.length; i++) {
-				if(line[i].matches("^\\w+$")) {
-					context.write(new Text(line[i]), new LongWritable(1));
-				}
-			}
-				
-			for(int i=0; i < line.length - 1; i++) {
-				if(line[i].matches("^\\w+$") && line[i+1].matches("^\\w+$")){ 
-					context.write(new Text(line[i] + " " + line[i+1]), new LongWritable(1));
-				}
-			}
-				
-		}
-			
-	}
-		
-	// Combiner gets the count of the word pairs
-	public static class Combiner extends Reducer<Text, LongWritable, Text, LongWritable> {
+		conf.waitForCompletion(true);
 
-		public void reduce(Text key, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
-
-			long count = 0;
-			for (LongWritable val : values) {
-				count += val.get();
-			}
-				context.write(key, new LongWritable(count));
+		File output = new File(args[1] + "/output.txt");
+		output.createNewFile();
+		FileWriter Filewrite = new FileWriter(output);
+		for (ResultPair val : sortedOutput) {
+			Filewrite.write(val.key + " : " + val.value + " : " + val.relFreq + "\n");
 		}
+		Filewrite.close();
 
 	}
-	//
-	
-	class myReducer extends Reducer <Text, LongWritable,Text, Text> {
-		
+
+	public static class myReducer extends Reducer <Text, LongWritable,Text, Text> {
+
 		DoubleWritable freq = new DoubleWritable();
 		DoubleWritable relFreq = new DoubleWritable();
-		Text word = new Text("");
-		TreeSet<ResultPair> sortedOutput_temp = new TreeSet<>();
-		TreeSet<ResultPair> sortedOutput = new TreeSet<>();
-		
+		Text word = new Text("EMPTY");
+
 		@Override
 		public void reduce(Text key, Iterable<LongWritable> value, Context con) throws IOException, InterruptedException {
-			
+
 			String[] pair = key.toString().split("\\s");
-			if(pair.length == 1) {
+			if(pair[1].equals("&")) {
 				if(pair[0].equals(word.toString())) {
 					freq.set(freq.get() + compFreq(value));
 				}
@@ -129,41 +135,37 @@ public class CountWords extends Configured implements Tool {
 			}
 			else {
 				double freq = compFreq(value);
-				relFreq.set((double)freq / this.freq.get());
-				double rel = relFreq.get();
-				//
-				sortedOutput_temp.add(new ResultPair(rel, key.toString(), word.toString()));
-				if (sortedOutput_temp.size() > 100000) {
-					sortedOutput_temp.pollLast();
+				if (freq != 1) {
+					relFreq.set((double)freq / this.freq.get());
+					double rel = relFreq.get();
+
+					if(rel == 1.0d) {
+						sortedOutput.add(new ResultPair(rel, freq, key.toString(), word.toString()));
+
+						if(sortedOutput.size() > 100) {
+							sortedOutput.pollLast();
+						}
+						con.write(key, new Text(Double.toString(rel)));
+					}
 				}
-				//
+
 			}
-			
+
 		}
-		
+
 		public double compFreq(Iterable<LongWritable> value) {
 			double freq = 0;
-			
+
 			for (LongWritable val : value) {
 				freq+= val.get();
 			}
 			return freq;
 		}
 
-	//
-		public void cleanup(Context context) throws IOException, InterruptedException {
-			while(!sortedOutput_temp.isEmpty()){
-				ResultPair p1= sortedOutput_temp.pollFirst();
-				context.write(new Text(p1.key+" / "+p1.key.split(" ")[0] + " ="), new Text(Double.toString(p1.relFreq)));
-			}
-		}
-	//
-		
 	}
-	
-	//
-	class ResultPair implements Comparable<ResultPair>  {
-		
+
+	public static class ResultPair implements Comparable<ResultPair>  {
+
 		double relFreq;
 		double count;
 		String key;
@@ -180,14 +182,11 @@ public class CountWords extends Configured implements Tool {
 		public int compareTo(ResultPair resultPair) {
 			if (this.count <= resultPair.count) {
 				return 1;
-			} else {
+			} 
+			else {
 				return -1;
 			}
 		}
 	}
-	//
-
 
 }
-
-
